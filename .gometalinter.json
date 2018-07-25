@@ -1,0 +1,38 @@
+{
+	"Disable": [
+		"aligncheck",
+		"gotype",
+		"lll",
+		"misspell",
+		"safesql",
+		"unused",
+		"gosimple",
+		"staticcheck",
+		"test",
+		"testify",
+		"dupl"
+	],
+	"Enable": [
+		"deadcode",
+		"errcheck",
+		"gosec",
+		"goconst",
+		"gocyclo",
+		"gofmt",
+		"goimports",
+		"golint",
+		"ineffassign",
+		"interfacer",
+		"megacheck",
+		"structcheck",
+		"unconvert",
+		"unparam",
+		"varcheck",
+		"vet",
+		"vetshadow"
+	],
+	"Exclude": [
+	],
+	"tests": true,
+	"sort": ["path"]
+}
