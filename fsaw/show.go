@@ -49,7 +49,7 @@ func layout(g *gocui.Gui) error {
 			fmt.Fprintln(v, "Help") // nolint: errcheck
 		}
 	} else {
-		g.DeleteView(viewHelp) // nolint: errcheck,gosec
+		g.DeleteView(viewHelp) // nolint
 	}
 
 	return nil
