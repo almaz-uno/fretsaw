@@ -16,8 +16,8 @@ var cfgFile string
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "fsaw",
-	Short: "Shows JSON logs records in convinient way",
-	Long:  `Shows JSON logs records in convinient way`,
+	Short: "Shows JSON logs records in convenient way",
+	Long:  `Shows JSON logs records in convenient way`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		log.Info("App started...")
 		defer log.Info("Bye.")

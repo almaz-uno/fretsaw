@@ -6,20 +6,24 @@ GOINSTALL = $(GOCMD) install -v
 GOTEST    = $(GOCMD) test
 GODEP     = $(GOTEST) -i
 GOFMT     = gofmt -w
-GOGET     = $(GOCMD) get -v
-GOLINT    = gometalinter
+GOGET     = $(GOCMD) get $(GOGET_FLAGS)
+GOLINT    = ${GOLINTDIR}/bin/golangci-lint
 GOCOV     = gocov
+DOCKER    = docker
+DCOMPOSE  = docker-compose
 
 SOURCEDIR = .
 SOURCES := $(shell find $(SOURCEDIR) -name '*.go')
 BUILDDIR = build
+BINDIR = bin
 DISTRDIR = $(BUILDDIR)/distr
 
-GOLINTFLAGS=--deadline=300s -t --vendored-linters --concurrency=4
-CHECKSTYLE_FILE=$(BUILDDIR)/gometalinter/checkstyle-result.xml
-GOLINTER_SUPPRESS_ERR=
+GOLINTDIR            ?= $(GOPATH)
+GOLINTFLAGS           =
+GOLINTER_SUPPRESS_ERR =
 
 GOCOV_COVER_XML=$(BUILDDIR)/gocov/coverage.xml
+GOCOV_COVER_HTML=$(BUILDDIR)/gocov/coverage.html
 
 VERSION      := v1.0.0
 BUILD_TIME   := $(shell date +%FT%T%z)
@@ -27,69 +31,67 @@ BUILD_TIME   := $(shell date +%FT%T%z)
 BUILD_COMMIT := ${BUILD_COMMIT}
 BUILD_BRANCH := ${BUILD_BRANCH}
 
-PKGS = github.com/cured-plumbum/fretsaw/fsaw
+PKGS = github.com/cured-plumbum/fretsaw/cmd/fsaw
 COPY_FILES = 
 
-DEPS = 	github.com/stretchr/testify/assert\
-		github.com/stretchr/testify/require\
-		github.com/sirupsen/logrus\
-		github.com/spf13/cobra\
-		github.com/spf13/viper\
-		github.com/mitchellh/go-homedir\
-		github.com/jroimartin/gocui\
-
-
-LDFLAGS	= -ldflags "-X $(PKG)/cmd.buildVersion=${VERSION}  -X $(PKG)/cmd.buildTime=${BUILD_TIME} -X $(PKG)/cmd.buildCommit=${BUILD_COMMIT} -X $(PKG)/cmd.buildBranch=${BUILD_BRANCH}"
-
-.phony: $(GOLINT) 
-$(GOLINT):
-	$(GOGET) -u github.com/alecthomas/gometalinter
-	$(GOLINT) --install --vendored-linters
+LDFLAGS	= -ldflags "-X main.buildVersion=${VERSION}  -X main.buildTime=${BUILD_TIME} -X main.buildCommit=${BUILD_COMMIT} -X main.buildBranch=${BUILD_BRANCH}"
+TESTFLAGS = -race -timeout 5m
 
 .phony: $(GOCOV)
 $(GOCOV):
-	$(GOGET) -u github.com/axw/gocov/gocov
-	$(GOGET) -u github.com/axw/gocov/...
-	$(GOGET) -u github.com/AlekSi/gocov-xml
+	GO111MODULE=off $(GOGET) github.com/axw/gocov/gocov
+	GO111MODULE=off $(GOGET) github.com/axw/gocov/...
+	GO111MODULE=off $(GOGET) github.com/AlekSi/gocov-xml
+	GO111MODULE=off $(GOGET) gopkg.in/matm/v1/gocov-html
+
+# https://github.com/golangci/golangci-lint#install
+# curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.15.0
+
+.phony: lint-install
+lint-install: $(GOLINT)
+
+$(GOLINT):
+	mkdir -p $(GOLINTDIR)
+	cd $(GOLINTDIR) && curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.15.0
 
 .phony: lint 
-lint: deps
-	$(GOLINT) $(GOLINTFLAGS) ./...;$(GOLINTER_SUPPRESS_ERR)
+lint: download lint-install
+	GO111MODULE=on $(GOLINT) $(GOLINTFLAGS) run;$(GOLINTER_SUPPRESS_ERR)
 
-.phony: lint-checkstyle
-lint-checkstyle: deps
-	mkdir -p $(dir $(CHECKSTYLE_FILE))
-	$(GOLINT) $(GOLINTFLAGS) --checkstyle ./... > $(CHECKSTYLE_FILE);$(GOLINTER_SUPPRESS_ERR)
+.phony: download
+download:
+	$(GOCMD) mod download
 
 .phony: clean 
 clean:
 	go clean
 	if [ -d $(BUILDDIR) ] ; then rm -rf $(BUILDDIR) ; fi
+	if [ -d $(BINDIR) ] ; then rm -rf $(BINDIR) ; fi
 
 .phony: test 
-test: deps
-	$(GOTEST) -race ./...
+test:
+	$(GOTEST) $(TESTFLAGS) ./...
 
-.phony: deps
-deps: $(DEPS)
+build: $(SOURCES) $(PKGS)
 
-$(DEPS):
-	$(GOGET) -t $@
-
-build: $(SOURCES) deps $(PKGS)
-
+# CGO disabled for remove dynamic dependencies
 .phony: $(PKGS) 
 $(PKGS):
 	$(eval PKG := $@)
 	$(eval OUT := $(notdir $@))
-	$(GOBUILD) $(LDFLAGS) -o $(DISTRDIR)/$(OUT) $(PKG)
+	env CGO_ENABLED=0 $(GOBUILD) $(LDFLAGS) -installsuffix cgo -o $(BINDIR)/$(OUT) $(PKG)
 
 .phony: install
-install: $(SOURCES) deps
+install: $(SOURCES)
 	$(foreach PKG, $(PKGS), $(GOINSTALL) $(LDFLAGS) $(PKG);)
 
 .phony: distr
 distr: build $(COPY_FILES)
+
+.phony: generate
+generate:
+	GO111MODULE=off $(GOGET) golang.org/x/tools/cmd/stringer
+	$(GOCMD) generate ./...
 
 .phony: $(COPY_FILES)
 $(COPY_FILES):
@@ -102,9 +104,13 @@ info:
 	go version
 	go env
 
-gocov-report: $(GOCOV) deps
-	$(GOCOV) test -race ./... | $(GOCOV) report
+gocov-report: $(GOCOV) download
+	$(GOCOV) test $(TESTFLAGS) ./...  | $(GOCOV) report
 
-gocov-cover-xml: $(GOCOV) deps
+gocov-xml: $(GOCOV) download
 	mkdir -p $(dir $(GOCOV_COVER_XML))
-	$(GOCOV) test -race ./... | gocov-xml > $(GOCOV_COVER_XML)
+	$(GOCOV) test $(TESTFLAGS) ./...  | gocov-xml > $(GOCOV_COVER_XML)
+
+gocov-html: $(GOCOV) download
+	mkdir -p $(dir $(GOCOV_COVER_HTML))
+	$(GOCOV) test $(TESTFLAGS) ./...  | gocov-html > $(GOCOV_COVER_HTML)
