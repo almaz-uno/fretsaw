@@ -66,7 +66,6 @@ download:
 clean:
 	go clean
 	if [ -d $(BUILDDIR) ] ; then rm -rf $(BUILDDIR) ; fi
-	if [ -d $(BINDIR) ] ; then rm -rf $(BINDIR) ; fi
 
 .phony: test 
 test:
@@ -79,7 +78,7 @@ build: $(SOURCES) $(PKGS)
 $(PKGS):
 	$(eval PKG := $@)
 	$(eval OUT := $(notdir $@))
-	env CGO_ENABLED=0 $(GOBUILD) $(LDFLAGS) -installsuffix cgo -o $(BINDIR)/$(OUT) $(PKG)
+	env CGO_ENABLED=0 $(GOBUILD) $(LDFLAGS) -installsuffix cgo -o $(BUILDDIR)/$(OUT) $(PKG)
 
 .phony: install
 install: $(SOURCES)
